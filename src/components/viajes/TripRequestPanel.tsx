@@ -129,27 +129,27 @@ export function TripRequestPanel({
   // Detectar cambios de estado del viaje
   useEffect(() => {
     if (!trip) return;
+    const notify = (status: string) => {
+      try { notifyTripStatus(status as Parameters<typeof notifyTripStatus>[0], "CLIENT"); } catch { /* ignored */ }
+    };
+
     if (trip.status === "ASSIGNED" && step === "waiting") {
       setStep("active");
       fetchDriverInfo(trip.driver_id!);
-      notifyTripStatus("ASSIGNED", "CLIENT");
+      notify("ASSIGNED");
     }
-    if (trip.status === "ON_ROUTE" && step === "active") {
-      notifyTripStatus("ON_ROUTE", "CLIENT");
-    }
-    if (trip.status === "STARTED" && step === "active") {
-      notifyTripStatus("STARTED", "CLIENT");
-    }
+    if (trip.status === "ON_ROUTE" && step === "active") notify("ON_ROUTE");
+    if (trip.status === "STARTED" && step === "active") notify("STARTED");
     if (trip.status === "FINISHED" && step === "active") {
-      notifyTripStatus("FINISHED", "CLIENT");
+      notify("FINISHED");
       setStep("rating");
     }
     if (trip.status === "CANCELLED") {
-      notifyTripStatus("CANCELLED", "CLIENT");
+      notify("CANCELLED");
       setError("El viaje fue cancelado.");
       handleCancel();
     }
-  }, [trip?.status]);
+  }, [trip?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchDriverInfo(driverId: string) {
     const supabase = createClient();
