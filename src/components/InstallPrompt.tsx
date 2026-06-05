@@ -38,16 +38,23 @@ export function InstallPrompt() {
     setIsIOSDevice(ios);
 
     if (ios) {
-      // En iOS mostramos instrucciones manuales después de 3 segundos
       const timer = setTimeout(() => setShowPrompt(true), 3000);
       return () => clearTimeout(timer);
     }
 
-    // Android/Chrome: escuchar el evento nativo
+    // Verificar si el evento ya fue capturado antes que React montara
+    const alreadyCaptured = (window as Window & { __pwaPrompt?: BeforeInstallPromptEvent }).__pwaPrompt;
+    if (alreadyCaptured) {
+      setDeferredPrompt(alreadyCaptured);
+      setTimeout(() => setShowPrompt(true), 2000);
+      return;
+    }
+
+    // Si no, escuchar el evento
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setTimeout(() => setShowPrompt(true), 3000);
+      setTimeout(() => setShowPrompt(true), 2000);
     };
 
     window.addEventListener("beforeinstallprompt", handler);
