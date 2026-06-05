@@ -29,6 +29,7 @@ export function DriverPanel() {
   const { location } = useLocation();
   const [isOnline, setIsOnline] = useState(false);
   const [hasProfile, setHasProfile] = useState(false);
+  const [isApproved, setIsApproved] = useState(false);
   const [pendingTrips, setPendingTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(false);
@@ -43,13 +44,16 @@ export function DriverPanel() {
 
       const { data: profile } = await supabase
         .from("driver_profiles")
-        .select("is_online")
+        .select("is_online, is_approved")
         .eq("user_id", user!.id)
         .single();
 
       if (profile) {
         setHasProfile(true);
-        setIsOnline((profile as { is_online: boolean }).is_online);
+        const p = profile as { is_online: boolean; is_approved: boolean };
+        setIsApproved(p.is_approved);
+        setIsOnline(p.is_online);
+        if (p.is_online && p.is_approved) await loadPendingTrips();
       }
       setProfileReady(true);
 
@@ -91,6 +95,17 @@ export function DriverPanel() {
     };
   }, [isOnline, user, location]);
 
+  // Cargar viajes pendientes existentes desde DB
+  async function loadPendingTrips() {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("trips")
+      .select("*")
+      .eq("status", "PENDING")
+      .order("created_at", { ascending: true });
+    if (data && data.length > 0) setPendingTrips(data as Trip[]);
+  }
+
   // Marcar online/offline en DB
   async function toggleOnline() {
     if (!user) return;
@@ -101,7 +116,11 @@ export function DriverPanel() {
       .update({ is_online: newState })
       .eq("user_id", user.id);
     setIsOnline(newState);
-    if (!newState) setPendingTrips([]);
+    if (newState) {
+      await loadPendingTrips(); // Cargar viajes al activarse
+    } else {
+      setPendingTrips([]);
+    }
   }
 
   const handleNewTrip = useCallback((trip: Trip) => {
@@ -191,8 +210,16 @@ export function DriverPanel() {
           </div>
         )}
 
+        {/* Pendiente de aprobación */}
+        {hasProfile && !isApproved && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-800">
+            <p className="font-medium">⏳ Cuenta pendiente de aprobación</p>
+            <p className="text-xs mt-1">Un administrador debe aprobar tu cuenta antes de que puedas recibir viajes.</p>
+          </div>
+        )}
+
         {/* Toggle online */}
-        {!activeTrip && hasProfile && (
+        {!activeTrip && hasProfile && isApproved && (
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-gray-800">
@@ -273,7 +300,7 @@ export function DriverPanel() {
         )}
 
         {/* Solicitudes pendientes */}
-        {isOnline && !activeTrip && pendingTrips.length > 0 && (
+        {isOnline && isApproved && !activeTrip && pendingTrips.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold text-gray-700">
@@ -325,7 +352,7 @@ export function DriverPanel() {
         )}
 
         {/* Estado sin solicitudes */}
-        {isOnline && !activeTrip && pendingTrips.length === 0 && (
+        {isOnline && isApproved && !activeTrip && pendingTrips.length === 0 && (
           <div className="flex items-center justify-center gap-2 py-4 text-gray-400">
             <Clock className="w-4 h-4" />
             <span className="text-sm">Esperando solicitudes...</span>
