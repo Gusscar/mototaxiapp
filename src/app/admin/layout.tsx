@@ -23,9 +23,12 @@ export default async function AdminLayout({
   if (profile?.role !== "ADMIN") redirect("/");
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-gray-50">
       <AdminSidebar />
-      <main className="flex-1 p-6 overflow-auto">{children}</main>
+      {/* pt-14 = espacio para top bar móvil, pb-16 = espacio para bottom nav móvil */}
+      <main className="flex-1 p-4 lg:p-6 overflow-auto pt-16 pb-20 lg:pt-6 lg:pb-6">
+        {children}
+      </main>
     </div>
   );
 }
