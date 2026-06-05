@@ -173,7 +173,15 @@ export function TripRequestPanel({
     }
   }
 
-  function handleCancel() {
+  async function handleCancel() {
+    // Cancelar el viaje en DB si existe y está en estado cancelable
+    if (activeTrip && (activeTrip.status === "PENDING" || activeTrip.status === "ASSIGNED")) {
+      const supabase = createClient();
+      await supabase
+        .from("trips")
+        .update({ status: "CANCELLED" })
+        .eq("id", activeTrip.id);
+    }
     setStep("idle");
     setOrigin(null);
     setDestination(null);
