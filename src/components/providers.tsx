@@ -5,6 +5,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { useState } from "react";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import { PushNotificationInit } from "@/components/PushNotificationInit";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -22,6 +23,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <PushNotificationInit />
+        <InstallPrompt />
         {children}
       </AuthProvider>
       {process.env.NODE_ENV === "development" && (
