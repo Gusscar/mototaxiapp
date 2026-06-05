@@ -152,25 +152,21 @@ export function TripRequestPanel({
   }, [trip?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function fetchDriverInfo(driverId: string) {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("users")
-      .select("name, phone")
-      .eq("id", driverId)
-      .single();
-    const { data: dp } = await supabase
-      .from("driver_profiles")
-      .select("motorcycle_model, license_plate")
-      .eq("user_id", driverId)
-      .single();
-    if (data && dp) {
-      setDriverInfo({
-        name: (data as { name: string; phone: string | null }).name,
-        phone: (data as { name: string; phone: string | null }).phone,
-        motorcycle_model: (dp as { motorcycle_model: string; license_plate: string }).motorcycle_model,
-        license_plate: (dp as { motorcycle_model: string; license_plate: string }).license_plate,
-      });
-    }
+    try {
+      const supabase = createClient();
+      const [{ data }, { data: dp }] = await Promise.all([
+        supabase.from("users").select("name, phone").eq("id", driverId).single(),
+        supabase.from("driver_profiles").select("motorcycle_model, license_plate").eq("user_id", driverId).single(),
+      ]);
+      if (data) {
+        setDriverInfo({
+          name: (data as { name: string; phone: string | null }).name,
+          phone: (data as { name: string; phone: string | null }).phone,
+          motorcycle_model: (dp as { motorcycle_model: string; license_plate: string } | null)?.motorcycle_model ?? "",
+          license_plate: (dp as { motorcycle_model: string; license_plate: string } | null)?.license_plate ?? "",
+        });
+      }
+    } catch { /* ignorar si RLS bloquea */ }
   }
 
   async function handleCancel() {
