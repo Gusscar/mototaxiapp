@@ -107,6 +107,34 @@ export function DriverPanel() {
   const handleNewTrip = useCallback((trip: Trip) => {
     setPendingTrips((prev) => {
       if (prev.find((t) => t.id === trip.id)) return prev;
+
+      // Sonido de notificación
+      try {
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(660, ctx.currentTime + 0.1);
+        osc.frequency.setValueAtTime(880, ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.4);
+      } catch { /* AudioContext no disponible */ }
+
+      // Vibración en móvil
+      if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+
+      // Notificación del sistema si la app está en segundo plano
+      if (Notification.permission === "granted" && document.hidden) {
+        new Notification("¡Nueva solicitud de viaje! 🏍️", {
+          body: `${trip.origin_address ?? "Origen"} → ${trip.destination_address ?? "Destino"}`,
+          icon: "/icons/icon-192x192.png",
+        });
+      }
+
       return [...prev, trip];
     });
   }, []);
@@ -247,9 +275,14 @@ export function DriverPanel() {
         {/* Solicitudes pendientes */}
         {isOnline && !activeTrip && pendingTrips.length > 0 && (
           <div className="space-y-2">
-            <p className="text-sm font-semibold text-gray-700">
-              Solicitudes disponibles ({pendingTrips.length})
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-gray-700">
+                Solicitudes disponibles
+              </p>
+              <span className="animate-pulse bg-orange-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
+                {pendingTrips.length}
+              </span>
+            </div>
             {pendingTrips.map((trip) => (
               <div
                 key={trip.id}
