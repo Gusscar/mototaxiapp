@@ -1,0 +1,256 @@
+"use client";
+
+import { useState, useCallback, useEffect, useRef } from "react";
+import { MapPin, DollarSign, Clock, Navigation } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useAuthStore } from "@/store/authStore";
+import { acceptTrip, updateTripStatus } from "@/services/trips";
+import { useRealtimePendingTrips } from "@/hooks/useRealtimeTrips";
+import { createClient } from "@/lib/supabase/client";
+import { useLocation } from "@/hooks/useLocation";
+import type { Trip } from "@/types/trip";
+
+const STATUS_ACTIONS: Partial<Record<Trip["status"], { label: string; next: Trip["status"] }>> = {
+  ASSIGNED: { label: "Voy a recoger al pasajero", next: "ON_ROUTE" },
+  ON_ROUTE: { label: "Pasajero a bordo", next: "STARTED" },
+  STARTED: { label: "Finalizar viaje", next: "FINISHED" },
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  ASSIGNED: "Viaje asignado",
+  ON_ROUTE: "En camino al pasajero",
+  STARTED: "Viaje en curso",
+  FINISHED: "Viaje completado",
+};
+
+export function DriverPanel() {
+  const user = useAuthStore((s) => s.user);
+  const { location } = useLocation();
+  const [isOnline, setIsOnline] = useState(false);
+  const [pendingTrips, setPendingTrips] = useState<Trip[]>([]);
+  const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
+  const [loading, setLoading] = useState(false);
+  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Actualizar ubicación en DB cada 5 segundos cuando está online
+  useEffect(() => {
+    if (!isOnline || !user || !location) return;
+
+    async function updateLocation() {
+      if (!user || !location) return;
+      const supabase = createClient();
+      await supabase
+        .from("driver_profiles")
+        .update({ current_lat: location.lat, current_lng: location.lng })
+        .eq("user_id", user.id);
+    }
+
+    updateLocation();
+    locationIntervalRef.current = setInterval(updateLocation, 5000);
+
+    return () => {
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+      }
+    };
+  }, [isOnline, user, location]);
+
+  // Marcar online/offline en DB
+  async function toggleOnline() {
+    if (!user) return;
+    const newState = !isOnline;
+    const supabase = createClient();
+    await supabase
+      .from("driver_profiles")
+      .update({ is_online: newState })
+      .eq("user_id", user.id);
+    setIsOnline(newState);
+    if (!newState) setPendingTrips([]);
+  }
+
+  const handleNewTrip = useCallback((trip: Trip) => {
+    setPendingTrips((prev) => {
+      if (prev.find((t) => t.id === trip.id)) return prev;
+      return [...prev, trip];
+    });
+  }, []);
+
+  useRealtimePendingTrips(handleNewTrip, isOnline && !activeTrip);
+
+  async function handleAccept(trip: Trip) {
+    if (!user) return;
+    try {
+      setLoading(true);
+      const accepted = await acceptTrip(trip.id, user.id);
+      setActiveTrip(accepted);
+      setPendingTrips([]);
+    } catch (e) {
+      console.error("Error aceptando viaje:", e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleStatusUpdate() {
+    if (!activeTrip) return;
+    const action = STATUS_ACTIONS[activeTrip.status];
+    if (!action) return;
+    try {
+      setLoading(true);
+      const updated = await updateTripStatus(activeTrip.id, action.next);
+      setActiveTrip(updated);
+      if (action.next === "FINISHED") {
+        setTimeout(() => setActiveTrip(null), 3000);
+      }
+    } catch (e) {
+      console.error("Error actualizando estado:", e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-[1000] max-h-[65vh] overflow-y-auto">
+      <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mt-3 mb-2" />
+      <div className="px-4 pb-6 pt-2 space-y-4">
+
+        {/* Toggle online */}
+        {!activeTrip && (
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">
+                {isOnline ? "Disponible" : "No disponible"}
+              </p>
+              <p className="text-xs text-gray-400">
+                {isOnline ? "Recibirás solicitudes de viaje" : "Activa para recibir viajes"}
+              </p>
+            </div>
+            <button
+              onClick={toggleOnline}
+              className={`relative w-14 h-7 rounded-full transition-colors duration-200 ${
+                isOnline ? "bg-green-500" : "bg-gray-200"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200 ${
+                  isOnline ? "translate-x-7" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+        )}
+
+        {/* Viaje activo */}
+        {activeTrip && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold">
+                {STATUS_LABELS[activeTrip.status] ?? "Viaje activo"}
+              </span>
+              <Badge variant={activeTrip.status === "FINISHED" ? "success" : "warning"}>
+                {activeTrip.status}
+              </Badge>
+            </div>
+
+            <div className="space-y-1.5 text-sm">
+              <div className="flex items-center gap-2 text-gray-600">
+                <div className="w-3 h-3 rounded-full bg-green-500 shrink-0" />
+                <span>
+                  {activeTrip.origin_address ??
+                    `${activeTrip.origin_lat.toFixed(5)}, ${activeTrip.origin_lng.toFixed(5)}`}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-600">
+                <div className="w-3 h-3 rounded-full bg-red-500 shrink-0" />
+                <span>
+                  {activeTrip.destination_address ??
+                    `${activeTrip.destination_lat.toFixed(5)}, ${activeTrip.destination_lng.toFixed(5)}`}
+                </span>
+              </div>
+            </div>
+
+            {activeTrip.price && (
+              <div className="flex items-center justify-between bg-orange-50 rounded-lg px-3 py-2">
+                <span className="text-sm text-gray-600">Ganancia</span>
+                <span className="font-bold text-orange-500">
+                  S/ {activeTrip.price.toFixed(2)}
+                </span>
+              </div>
+            )}
+
+            {activeTrip.status === "FINISHED" ? (
+              <p className="text-center text-sm text-green-600 font-medium py-2">
+                ¡Viaje completado exitosamente!
+              </p>
+            ) : STATUS_ACTIONS[activeTrip.status] ? (
+              <Button
+                className="w-full"
+                onClick={handleStatusUpdate}
+                disabled={loading}
+              >
+                <Navigation className="w-4 h-4 mr-2" />
+                {STATUS_ACTIONS[activeTrip.status]!.label}
+              </Button>
+            ) : null}
+          </div>
+        )}
+
+        {/* Solicitudes pendientes */}
+        {isOnline && !activeTrip && pendingTrips.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-gray-700">
+              Solicitudes disponibles ({pendingTrips.length})
+            </p>
+            {pendingTrips.map((trip) => (
+              <div
+                key={trip.id}
+                className="border border-gray-100 rounded-xl p-3 space-y-2 bg-gray-50"
+              >
+                <div className="space-y-1 text-xs text-gray-600">
+                  <div className="flex items-start gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-green-400 mt-0.5 shrink-0" />
+                    <span className="truncate">
+                      {trip.origin_address ??
+                        `${trip.origin_lat.toFixed(4)}, ${trip.origin_lng.toFixed(4)}`}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-400 mt-0.5 shrink-0" />
+                    <span className="truncate">
+                      {trip.destination_address ??
+                        `${trip.destination_lat.toFixed(4)}, ${trip.destination_lng.toFixed(4)}`}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  {trip.price && (
+                    <span className="text-sm font-semibold text-orange-500">
+                      S/ {trip.price.toFixed(2)}
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    className="ml-auto"
+                    onClick={() => handleAccept(trip)}
+                    disabled={loading}
+                  >
+                    Aceptar
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Estado sin solicitudes */}
+        {isOnline && !activeTrip && pendingTrips.length === 0 && (
+          <div className="flex items-center justify-center gap-2 py-4 text-gray-400">
+            <Clock className="w-4 h-4" />
+            <span className="text-sm">Esperando solicitudes...</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
