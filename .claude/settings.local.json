@@ -5,7 +5,13 @@
       "Bash(python:*)",
       "Bash(npx create-next-app@latest:*)",
       "Bash(npm install:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "WebSearch",
+      "WebFetch(domain:unsplash.com)",
+      "WebFetch(domain:www.pexels.com)",
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

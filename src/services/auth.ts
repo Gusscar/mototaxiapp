@@ -19,16 +19,6 @@ export async function signUp(
 
   if (error) throw error;
 
-  if (data.user) {
-    const { error: profileError } = await supabase.from("users").insert({
-      id: data.user.id,
-      name,
-      email,
-      role,
-    });
-    if (profileError) throw profileError;
-  }
-
   return data;
 }
 

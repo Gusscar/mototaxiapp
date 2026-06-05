@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { MapPin, Navigation, DollarSign, Clock, Star, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useTripStore } from "@/store/tripStore";
 import { useAuthStore } from "@/store/authStore";
-import { createTrip } from "@/services/trips";
+import { createTrip, getActiveTripForClient } from "@/services/trips";
 import { getRoute, reverseGeocode } from "@/services/maps";
 import { useLocation } from "@/hooks/useLocation";
 import { useRealtimeTrips } from "@/hooks/useRealtimeTrips";
@@ -75,6 +75,39 @@ export function TripRequestPanel({
   const [driverInfo, setDriverInfo] = useState<DriverInfo | null>(null);
   const [walletBalance, setWalletBalance] = useState(0);
   const { data: tariff } = useTariff();
+
+  // Recuperar viaje activo al montar (por si el usuario recargó la página)
+  useEffect(() => {
+    if (!user) return;
+    async function restoreActiveTrip() {
+      const existing = await getActiveTripForClient(user!.id);
+      if (!existing) return;
+      setActiveTrip(existing);
+      setOrigin({
+        lat: existing.origin_lat,
+        lng: existing.origin_lng,
+        address: existing.origin_address ?? undefined,
+      });
+      setDestination({
+        lat: existing.destination_lat,
+        lng: existing.destination_lng,
+        address: existing.destination_address ?? undefined,
+      });
+      setPrice(existing.price ?? null);
+
+      if (existing.status === "PENDING") setStep("waiting");
+      else if (
+        existing.status === "ASSIGNED" ||
+        existing.status === "ON_ROUTE" ||
+        existing.status === "STARTED"
+      ) {
+        setStep("active");
+        if (existing.driver_id) fetchDriverInfo(existing.driver_id);
+      }
+    }
+    restoreActiveTrip();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Tracking en tiempo real del conductor
   const driverLocation = useDriverLocation(
@@ -161,43 +194,42 @@ export function TripRequestPanel({
     setLoading(true);
     try {
       const address = await reverseGeocode(location.lat, location.lng);
-      setOrigin({ lat: location.lat, lng: location.lng, address });
-      onSelectingDestinationChange(true, handleDestinationSelected);
+      const newOrigin = { lat: location.lat, lng: location.lng, address };
+      setOrigin(newOrigin);
       setStep("selecting_destination");
+
+      // Se crea la función con newOrigin en el closure para evitar estado obsoleto
+      const handleDestClick = async (lat: number, lng: number) => {
+        onSelectingDestinationChange(false);
+        setStep("calculating");
+        setError(null);
+        try {
+          const destAddress = await reverseGeocode(lat, lng);
+          const dest = { lat, lng, address: destAddress };
+          setDestination(dest);
+          const route = await getRoute(newOrigin, dest);
+          const calculatedPrice = tariff
+            ? calculateDynamicPrice(tariff, route.distanceKm, route.durationMin)
+            : Math.max(2.0, 2.0 + route.distanceKm * 1.5);
+          setPrice(calculatedPrice);
+          setDistanceKm(route.distanceKm);
+          setDurationMin(route.durationMin);
+          onRouteChange(route.coordinates);
+          setStep("confirming");
+        } catch {
+          setError("No se pudo calcular la ruta. Elige otro destino.");
+          setStep("selecting_destination");
+          onSelectingDestinationChange(true, handleDestClick);
+        }
+      };
+
+      onSelectingDestinationChange(true, handleDestClick);
     } catch {
       setError("No se pudo obtener tu ubicación");
     } finally {
       setLoading(false);
     }
   }
-
-  const handleDestinationSelected = useCallback(
-    async (lat: number, lng: number) => {
-      if (!origin) return;
-      onSelectingDestinationChange(false);
-      setStep("calculating");
-      setError(null);
-      try {
-        const address = await reverseGeocode(lat, lng);
-        const dest = { lat, lng, address };
-        setDestination(dest);
-        const route = await getRoute(origin, dest);
-        const calculatedPrice = tariff
-          ? calculateDynamicPrice(tariff, route.distanceKm, route.durationMin)
-          : Math.max(2.0, 2.0 + route.distanceKm * 1.5);
-        setPrice(calculatedPrice);
-        setDistanceKm(route.distanceKm);
-        setDurationMin(route.durationMin);
-        onRouteChange(route.coordinates);
-        setStep("confirming");
-      } catch {
-        setError("No se pudo calcular la ruta. Elige otro destino.");
-        setStep("selecting_destination");
-        onSelectingDestinationChange(true, handleDestinationSelected);
-      }
-    },
-    [origin, setDestination, onSelectingDestinationChange, onRouteChange]
-  );
 
   async function handleGoToPayment() {
     if (!user) return;

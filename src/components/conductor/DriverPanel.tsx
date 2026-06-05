@@ -28,10 +28,45 @@ export function DriverPanel() {
   const user = useAuthStore((s) => s.user);
   const { location } = useLocation();
   const [isOnline, setIsOnline] = useState(false);
+  const [hasProfile, setHasProfile] = useState(false);
   const [pendingTrips, setPendingTrips] = useState<Trip[]>([]);
   const [activeTrip, setActiveTrip] = useState<Trip | null>(null);
   const [loading, setLoading] = useState(false);
+  const [profileReady, setProfileReady] = useState(false);
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Cargar estado real del conductor desde la DB al montar
+  useEffect(() => {
+    if (!user) return;
+    async function loadDriverState() {
+      const supabase = createClient();
+
+      const { data: profile } = await supabase
+        .from("driver_profiles")
+        .select("is_online")
+        .eq("user_id", user!.id)
+        .single();
+
+      if (profile) {
+        setHasProfile(true);
+        setIsOnline((profile as { is_online: boolean }).is_online);
+      }
+      setProfileReady(true);
+
+      // Buscar viaje activo asignado al conductor
+      const { data: trip } = await supabase
+        .from("trips")
+        .select("*")
+        .eq("driver_id", user!.id)
+        .not("status", "in", '("FINISHED","CANCELLED")')
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (trip) setActiveTrip(trip as Trip);
+    }
+    loadDriverState();
+  }, [user?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Actualizar ubicación en DB cada 5 segundos cuando está online
   useEffect(() => {
@@ -110,13 +145,26 @@ export function DriverPanel() {
     }
   }
 
+  if (!profileReady) return null;
+
   return (
     <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl z-[1000] max-h-[65vh] overflow-y-auto">
       <div className="w-10 h-1 bg-gray-200 rounded-full mx-auto mt-3 mb-2" />
       <div className="px-4 pb-6 pt-2 space-y-4">
 
+        {/* Sin perfil: pedir que lo complete */}
+        {!hasProfile && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-800">
+            <p className="font-medium">Completa tu perfil</p>
+            <p className="text-xs mt-1">Debes registrar tu moto y licencia antes de recibir viajes.</p>
+            <a href="/conductor/perfil" className="text-orange-500 font-semibold text-xs mt-2 block">
+              Ir a Mi perfil →
+            </a>
+          </div>
+        )}
+
         {/* Toggle online */}
-        {!activeTrip && (
+        {!activeTrip && hasProfile && (
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-gray-800">

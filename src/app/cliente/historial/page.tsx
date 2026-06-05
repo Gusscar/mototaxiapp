@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { TripHistoryList } from "@/components/viajes/TripHistoryList";
+import { PageTransition } from "@/components/ui/PageTransition";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
@@ -25,9 +26,11 @@ export default async function ClienteHistorialPage() {
         </Link>
         <h1 className="font-semibold text-gray-800">Mis viajes</h1>
       </header>
-      <div className="p-4">
-        <TripHistoryList trips={trips ?? []} role="CLIENT" />
-      </div>
+      <PageTransition>
+        <div className="p-4">
+          <TripHistoryList trips={trips ?? []} role="CLIENT" />
+        </div>
+      </PageTransition>
     </div>
   );
 }
