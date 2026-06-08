@@ -122,6 +122,25 @@ export function TripRequestPanel({
     onDriverLocationChange(driverLocation);
   }, [driverLocation, onDriverLocationChange]);
 
+  // Dibujar ruta del conductor → origen cuando viene a buscar al cliente
+  useEffect(() => {
+    if (!driverLocation || !origin) return;
+    const status = activeTrip?.status;
+
+    if (status === "ASSIGNED" || status === "ON_ROUTE") {
+      // Ruta del conductor al punto de recogida
+      getRoute(driverLocation, origin)
+        .then((route) => onRouteChange(route.coordinates))
+        .catch(() => {});
+    } else if (status === "STARTED" && destination) {
+      // Ruta del origen al destino (viaje en curso)
+      getRoute(origin, destination)
+        .then((route) => onRouteChange(route.coordinates))
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverLocation?.lat, driverLocation?.lng, activeTrip?.status]);
+
   // Realtime del viaje
   useRealtimeTrips(activeTrip?.id ?? null);
   const trip = useTripStore((s) => s.activeTrip);

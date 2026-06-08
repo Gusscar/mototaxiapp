@@ -57,6 +57,16 @@ function RecenterOnce({ lat, lng }: { lat: number; lng: number }) {
   return null;
 }
 
+function FitBounds({ points }: { points: [number, number][] }) {
+  const map = useMap();
+  useEffect(() => {
+    if (points.length < 2) return;
+    const bounds = L.latLngBounds(points.map(([lat, lng]) => L.latLng(lat, lng)));
+    map.fitBounds(bounds, { padding: [60, 60] });
+  }, [points, map]);
+  return null;
+}
+
 export interface MapViewInnerProps {
   selectingDestination?: boolean;
   onDestinationSelect?: (lat: number, lng: number) => void;
@@ -126,6 +136,15 @@ export default function MapViewInner({
           dashArray="8"
           weight={3}
         />
+      )}
+
+      {/* Encuadrar mapa para mostrar conductor + ruta */}
+      {driverLocation && routeCoords && routeCoords.length > 1 && (
+        <FitBounds points={[
+          [driverLocation.lat, driverLocation.lng],
+          ...routeCoords.slice(0, 1),
+          ...routeCoords.slice(-1),
+        ]} />
       )}
 
       {selectingDestination && onDestinationSelect && (
